@@ -1,1 +1,1 @@
-from .job import Job, inspect_job
+from .job import Job

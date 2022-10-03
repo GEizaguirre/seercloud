@@ -12,7 +12,7 @@ install_requires = [
 
 # Load example storage data
 home_path = expanduser("~")
-copy("storage_data/pred_ibm_cos_64.pickle", "%s/.lithops/pred_ibm_cos_64.pickle")
+copy("storage_data/pred_ibm_cos_64.pickle", "%s/.lithops/pred_ibm_cos_64.pickle"%(home_path))
 
 setup(
     name='seercloud',

@@ -27,7 +27,7 @@ class Exchange(Operation):
     write: bool
     storage: Storage
 
-    def __init(self, write: bool, **kwargs ):
+    def __init__(self, write: bool, **kwargs ):
 
         super(Exchange, self).__init__(**kwargs)
         self.write = write

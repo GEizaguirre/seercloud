@@ -29,6 +29,10 @@ For IBM Cloud, for instance, fill a yaml configuration file following the Lithop
 
 ## Programatical API
 
+We provide some execution examples in the [tests](https://github.com/GEizaguirre/seercloud/tree/main/tests) directory. 
+For instance, one could perform a sort operation on a dataset
+as following. 
+
 ```python
 import yaml
 

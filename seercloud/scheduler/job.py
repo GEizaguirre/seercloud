@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, List, Optional, Any, Tuple, Type
 
-from seercloud.operation import Operation
+from seercloud.operation import Operation, Exchange
 from .stage import Stage
 
 from lithops import FunctionExecutor
@@ -42,11 +42,16 @@ class Job():
 
         logger.info("Added operation %s to stage %d" % (op.__name__, stage))
 
-        self.stages[stage].add_op(op(**kwargs))
+        if op is Exchange:
+            self.stages[stage].add_op(op(**kwargs, write=True))
+        else:
+            self.stages[stage].add_op(op(**kwargs))
 
     def run(self):
 
         self.prepare_execution()
+
+        self.explain()
 
         completed_stages = []
         stage_epochs = 0
@@ -108,9 +113,10 @@ class Job():
 
         for d in self.dependencies:
             self.stages[d[1]].surname_in = self.stages[d[0]].surname_out
+            if isinstance(self.stages[d[0]].operations[-1], Exchange):
+                self.stages[d[1]].operations.insert(0, Exchange(write = False))
 
 
-        # Connect exchanges
 
     def prepare_parameters(self):
 
@@ -139,4 +145,12 @@ class Job():
                     current_s = d[1]
 
         # In exchange steps, type of operation
+
+    def explain(self):
+
+        for i, s in self.stages.items():
+            print("Stage %d:"%(i))
+            for op in s.operations:
+                print("\t· %s"%(type(op).__name__))
+
 
