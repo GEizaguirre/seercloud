@@ -101,8 +101,8 @@ cp config.yaml config/config_cloud.yaml
 
 ```bash
 wget https://github.com/GEizaguirre/seercloud/archive/refs/heads/main.zip
-unzip seercloud-dev-main.zip
-mv seercloud-dev-main seercloud
+unzip main.zip
+mv seercloud-main seercloud
 cd seercloud
 pip3 install .
 ```
@@ -110,6 +110,6 @@ pip3 install .
 4. Run the following command.
 
 ```bash
-python3.8 tests/pipeline/sort.py
+python3.8 tests/pipelines/cloud/sort.py
 ```
 
