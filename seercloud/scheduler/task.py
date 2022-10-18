@@ -1,27 +1,32 @@
 from typing import Union, List
 
-import numpy as np
-import pandas as pd
 from lithops import Storage
 
-from seercloud.operation import Write, Exchange, Scan, Collect, Operation, Sort
-from seercloud.operation.transform import Transformation
-from seercloud.operation.groupby import Groupby
+import logging
+from seercloud.metadata import DataInfo, TaskInfo
+from seercloud.operation import Operation
 from seercloud.scheduler.data import Data
 
-# TODO: log execution information
+
+# TODO: save execution metrics
+
+logger = logging.getLogger(__name__)
 
 class Task():
 
-    data: Data
+    data_info: DataInfo
+    task_info: TaskInfo
     operations: List[Operation]
     storage: Storage
 
-    def __init__(self):
+    def __init__(self, task_info: TaskInfo, data_info: DataInfo):
 
         self.operations = list()
         self.current_operation = 0
         self.data = Data()
+
+        self.task_info = task_info
+        self.data_info = data_info
 
 
     def run(self):
@@ -29,46 +34,30 @@ class Task():
         self.storage = Storage()
 
         for op in self.operations:
+
+            print("Running %s"%(op.__class__.__name__))
+
+            op.set_task_info(self.task_info)
+            op.set_data_info(self.data_info)
+
             # Share storage client in all operations
             op.data_info.set_storage(self.storage)
-            op.run(Data)
+            op.run(self.data)
 
         if self.data.return_value is not None:
             return self.data.return_value
+        else:
+            return len(self.data.data)
 
-    def add_operation(self, operation: Operation):
-        self.operations.append(operation)
-
-
-
-
-    def read(self):
-
-        data, exchange_info = self.operation[0].scan()
-
-        if isinstance(self.operations[1], Groupby) or isinstance(self.operations[1], Sort):
-            self.current_operation += 1
-
-
-    def transform(self):
-        pass
-
-    def write(self):
-        pass
-
-    def exchange(self):
-        pass
-
-    def collect(self):
-
-        # append result to self.exec_info
-        pass
-
+    def set_operations(self, operations: List[Operation]):
+        self.operations = operations
 
 
 def run_task(task: Task):
 
-    task.run()
+    print("Stage %d - task %d" % (task.task_info.stage_id, task.task_info.task_id))
+
+    return task.run()
 
 
 

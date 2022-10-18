@@ -1,6 +1,7 @@
 import logging
 import pickle
 from concurrent.futures.thread import ThreadPoolExecutor
+from enum import Enum
 from math import floor
 from typing import Tuple, Union
 from queue import Queue
@@ -9,10 +10,13 @@ from lithops.storage import Storage
 import os
 import pandas as pd
 
-from seercloud.IO.read import read_and_adjust, adjust_bounds
+from seercloud.IO.read import read_and_adjust, adjust_bounds, read_obj
+from seercloud.IO.utils import get_data_size
 from seercloud.inference.config import CHUNK_SIZE
 from seercloud.operation import Operation
 from seercloud.config import DEFAULT_THREAD_NUM
+from seercloud.operation.Partition import Partition
+from seercloud.operation.sample import SAMPLE_SUFIX
 from seercloud.scheduler.data import Data
 from seercloud.utils.hash import hash2
 
@@ -40,24 +44,24 @@ class Scan(Operation):
     read_bounds: list
     num_bounds: int
 
-    do_kp: bool
-    do_hash: bool
+    delimiter: str
 
-    def __init__(self, file: str, bucket: str, **kwargs):
+    def __init__(self, file: str, bucket: str, types: list = None, delimiter: str = ",", **kwargs):
 
         super(Scan, self).__init__(**kwargs)
 
         self.read_path = file
         self.read_bucket = bucket
         self.chunk_size = CHUNK_SIZE
+        self.types = types
+        self.delimiter = delimiter
 
     def run(self, data: Data):
 
-        # TODO
-        self.set_kp()
-        self.set_hash()
-
         self.storage = self.data_info.storage
+
+        if self.task_info.partition == Partition.SEGMENT:
+            self.get_segment_info()
 
         # Calculate read range
         self._get_read_range()
@@ -71,13 +75,16 @@ class Scan(Operation):
         #     self.read_bounds[i] = lb
 
         # key-pointer conditions
-        if self.do_kp:
-            ed, hash_list = self._concurrent_read(self.do_hash, self.key)
+        if self.task_info.do_kp:
+            print("Concurrent scan and partitioning %s"%("with hash" if self.task_info.do_hash else "None"))
+            ed, hash_list = self._concurrent_read(self.task_info.partition, self.key)
+            data.data = ed
+            data.hash_list = hash_list
         else:
-            ed, hash_list = self._chunk_merger()
+            print("Simple scan")
+            self._chunk_merger(data)
 
-        data.data = ed
-        data.hash_list = hash_list
+
 
     def _concurrent_read(self, do_hash: bool, key: str) -> Tuple[pd.DataFrame, Union[list, np.ndarray, None]]:
 
@@ -134,14 +141,14 @@ class Scan(Operation):
         except Exception as error:
             print("Producer exception: {}".format(str(error)))
 
-    def _chunk_consumer_kp(self, do_hash: bool, key: str) -> Tuple[pd.DataFrame, list]:
+    def _chunk_consumer_kp(self, partition: Partition, key: str) -> Tuple[pd.DataFrame, list]:
 
         read_cnks = 0
         current_lower_bound = 0
         accumulated_size = 0
 
         # Key-pointer structure
-        my_row_num = int((self.data_info.approx_rows / self.num_tasks) * (1 + DATAFRAME_ALLOCATION_MARGIN))
+        my_row_num = int((self.data_info.approx_rows / self.task_info.num_tasks) * (1 + DATAFRAME_ALLOCATION_MARGIN))
 
         df_columns = {nm: np.empty(my_row_num,
                                    dtype=self.data_info.dtypes[nm]) for nm in self.data_info.columns}
@@ -173,9 +180,9 @@ class Scan(Operation):
 
             keys_array = np.array(df[key])
 
-            if do_hash:
+            if partition.HASH:
                 keys_array = np.array(hash2(keys_array, self.task_info.num_tasks), dtype='uint32')
-            else:
+            if partition.SEGMENT:
                 keys_array = np.searchsorted(self.segment_info, keys_array)
 
             key_pointer_struct['key'][current_lower_bound:(current_lower_bound + current_shape)] = keys_array
@@ -214,12 +221,15 @@ class Scan(Operation):
 
         return df, hash_list
 
-    def _chunk_merger(self) -> Tuple[pd.DataFrame, list]:
+    def _chunk_merger(self, data: Data) -> Tuple[pd.DataFrame, list]:
         # only reads and finally merges
 
         chunks = []
 
-        for c_i in range(self.num_bounds - 1):
+        print(self.read_bounds)
+
+        for c_i in range(self.num_bounds):
+
 
             chunk, part_size = read_and_adjust(storage=self.storage, read_bucket=self.read_bucket,
                                                read_path=self.read_path, data_info=self.data_info,
@@ -227,33 +237,65 @@ class Scan(Operation):
                                                upper_bound=self.read_bounds[c_i + 1] - 1,
                                                total_size=self.total_size)
 
+            # print(part_size)
+
+            data.read_bytes += part_size
+
             chunks.append(chunk)
+
+            print(len(chunk))
 
         df = pd.concat(chunks, ignore_index=True)
 
-        return df, None
+        # print(len(df))
+
+        data.data = df
+
+        print(self.task_info.partition)
+        if self.task_info.partition == Partition.HASH:
+            data.hash_list = np.array(hash2(data.data[self.key], self.task_info.num_tasks), dtype='uint32')
+        if self.task_info.partition == Partition.SEGMENT:
+
+            print(self.segment_info)
+            data.hash_list = np.searchsorted(self.segment_info, data.data[self.key])
+            print(len)
+
+        print(data.hash_list[:10])
+
+
 
     def _get_read_range(self):
         """
         Calculate byte range to read from a dataset, given the id of the task.
         """
-        self.total_size = self.storage.head_object(self.read_bucket, self.read_path)['ContentLength']
 
-        partition_size = floor(self.total_size / self.num_tasks)
+        self.total_size = get_data_size(self.storage, self.read_bucket, self.read_path)
 
-        self.lower_bound = self.task_id * partition_size
+        partition_size = floor(self.total_size / self.task_info.num_tasks)
+
+        self.lower_bound = self.task_info.task_id * partition_size
         self.upper_bound = self.lower_bound + partition_size
 
-        self.lower_bound, self.upper_bound = adjust_bounds(self.storage, self.read_bucket, self.read_path,
-                                                           self.lower_bound, self.upper_bound, self.total_size)
+        # self.lower_bound, self.upper_bound = adjust_bounds(self.storage, self.read_bucket, self.read_path,
+        #                                                    self.lower_bound, self.upper_bound, self.total_size)
 
-    def set_hash(self):
-        pass
+        print("Scanning bytes=%d-%d (%d)"%(self.lower_bound, self.upper_bound,
+                                           self.upper_bound - self.lower_bound))
 
-    def set_kp(self):
-        self.set_key()
-        pass
 
-    def set_key(self):
-        # TODO
-        pass
+    def explain(self):
+        return "%s (%s/%s)"%(self.__class__.__name__, self.read_bucket, self.read_path)
+
+    def get_segment_info(self):
+
+        sufixes = [SAMPLE_SUFIX, self.task_info.surname_out]
+
+        try:
+
+            self.segment_info = pickle.loads(read_obj(self.storage, self.read_bucket,
+                                         self.read_path, sufixes))
+
+        except Exception as e:
+
+            self.segment_info = None
+

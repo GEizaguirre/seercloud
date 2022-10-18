@@ -1,6 +1,7 @@
 import pandas as pd
 
 from seercloud.operation import Operation
+from seercloud.scheduler.data import Data
 
 
 class Sort(Operation):
@@ -13,9 +14,9 @@ class Sort(Operation):
         super(Sort, self).__init__(**kwargs)
         self.key = key
 
-    def sort(self, data: pd.DataFrame):
+    def run(self, data: Data):
 
-        data.sort_values(self.key, inplace=True)
+        data.data.sort_values(self.key, inplace=True)
 
 
 

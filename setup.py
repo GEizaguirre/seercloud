@@ -1,17 +1,20 @@
 #!/usr/bin/env python
+import os
 from os.path import expanduser
-
-from setuptools import setup, find_packages, Extension
+from setuptools import setup, find_packages
 from shutil import copy
 
 
 install_requires = [
     'Cython',
-    'lithops'
+    'lithops',
+    'pyarrow'
 ]
 
 # Load example storage data
 home_path = expanduser("~")
+if not os.path.exists("%s/.lithops"%(home_path)):
+    os.makedirs("%s/.lithops"%(home_path))
 copy("storage_data/pred_ibm_cos_64.pickle", "%s/.lithops/pred_ibm_cos_64.pickle"%(home_path))
 
 setup(
@@ -21,7 +24,7 @@ setup(
     author='German T. Eizaguirre',
     description='Serverless shuffle utility',
     author_email='gteizaguirre@gmail.com',
-    packages=find_packages(exclude=("fig", "seer", "src")),
+    packages=find_packages(exclude=("seercloud", "src")),
     install_requires=install_requires,
     # extras_require=extras_require,
     include_package_data=True,
@@ -31,16 +34,10 @@ setup(
         'Operating System :: OS Independent',
         'Natural Language :: English',
         'License :: OSI Approved :: Apache Software License',
-        'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9',
-        'Programming Language :: Python :: 3.10',
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Scientific/Engineering',
         'Topic :: System :: Distributed Computing',
     ],
-    python_requires='>=3.6',
-    ext_modules = [Extension("seercloud.src.chash", ["seercloud/src/chash.c"])]
+    python_requires='>=3.6'
 )

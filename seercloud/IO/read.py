@@ -1,5 +1,6 @@
+import logging
 from io import BytesIO, StringIO
-from typing import Tuple, Union, List
+from typing import Tuple, Union, List, TextIO, BinaryIO
 
 import pandas as pd
 from lithops import Storage
@@ -7,7 +8,9 @@ from lithops import Storage
 from seercloud.metadata import DataInfo
 
 
-BOUND_EXTRACTION_MARGIN = 100
+BOUND_EXTRACTION_MARGIN = 500
+
+logger = logging.getLogger(__name__)
 
 def read_and_adjust(storage: Storage, read_bucket: str, read_path: str,
                     data_info: DataInfo, lower_bound: int, upper_bound: int,
@@ -23,14 +26,20 @@ def read_and_adjust(storage: Storage, read_bucket: str, read_path: str,
                                              str(upper_bound)])
                                         })
 
-    read_part = part_to_IO(read_part)
+    part_length = len(read_part)
 
+    # print(part_length)
+    read_part = part_to_IO(read_part)
 
     df = pd.read_csv(read_part, engine='c', index_col=None, header=None,
                      names=data_info.columns,
                      delimiter=data_info.delimiter, dtype=data_info.dtypes)
 
-    return df, len(read_part)
+    cols = [ str(c) for c in df.columns ]
+
+    df.columns = cols
+
+    return df, part_length
 
 
 def adjust_bounds(storage: Storage, read_bucket: str, read_path: str,
@@ -41,6 +50,7 @@ def adjust_bounds(storage: Storage, read_bucket: str, read_path: str,
         @param upper_bound: approximate byte to end the read.
         @return: specific byte range to read without cutting lines.
         """
+
         if lower_bound != 0:
 
             # lower_bound definition
@@ -79,6 +89,8 @@ def adjust_bounds(storage: Storage, read_bucket: str, read_path: str,
                         plb = plb + i + 1
                         break
             lb = plb
+        else:
+            lb = 0
 
         ub = upper_bound
         if ub < total_size:
@@ -125,6 +137,8 @@ def adjust_bounds(storage: Storage, read_bucket: str, read_path: str,
                 ub = plb - 1
             else:
                 ub = pub
+        else:
+            ub = total_size
 
         return lb, ub
 
@@ -139,6 +153,6 @@ def part_to_IO(read_part) -> Union[BytesIO, StringIO]:
     return read_part
 
 def read_obj(storage: Storage, Bucket: str, Key: str,
-              sufixes: List[str]) -> bytes:
-    storage.get_object(bucket = Bucket,
+              sufixes: List[str]) -> Union[str, bytes, TextIO, BinaryIO]:
+    return storage.get_object(bucket = Bucket,
                        key = "_".join([Key] + sufixes))
