@@ -104,7 +104,7 @@ wget https://github.com/GEizaguirre/seercloud/archive/refs/heads/main.zip
 unzip main.zip
 mv seercloud-main seercloud
 cd seercloud
-pip3 install .
+pip3 install -e .
 ```
 
 4. Run the following command.
