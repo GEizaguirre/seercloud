@@ -4,6 +4,7 @@
   </a>
 </p>
 
+[![DOI](https://zenodo.org/badge/545037642.svg)](https://zenodo.org/badge/latestdoi/545037642)
 
 Seer is serverless data analytics framework with dynamic optimization of data exchange steps. It is built on [Lithops](https://github.com/lithops-cloud/lithops), a multi-cloud distributed computing framework, over cloud functions and blob object storage.
 
